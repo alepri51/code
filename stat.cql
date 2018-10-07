@@ -52,6 +52,14 @@ WHERE l.price > 5000000 AND l.price < 10000000 AND nt.name = 'Апартамен
 //WITH DISTINCT b, nt, l
 MATCH (d:Девелопер)<-[:проектируется]-(b)-[:строится]->(z:Застройщик)
 RETURN DISTINCT b.name, COLLECT(DISTINCT d.name) AS d, COLLECT(DISTINCT z.name) AS z, {type: nt.name, rooms: l.rooms, count: COUNT(l), price: { min: MIN(l.price), max: MAX(l.price) }, square: { min: MIN(l.square), max: MAX(l.square) } } AS lots
+
+//EXPLAIN
+CALL spatial.intersects('geom', 'MULTIPOLYGON(((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)), ((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)))') YIELD node AS address
+MATCH (address)<-[:расположен]-(b :Корпус)<-[:`в составе`]-(l :Студия:`Свободная планировка`)-[:тип]->(nt:`Тип недвижимости`)
+//WHERE l.price > 5000000 AND l.price < 10000000 AND nt.name = 'Апартаменты'
+//WITH DISTINCT b, nt, l
+MATCH (d:Девелопер)<-[:проектируется]-(b)-[:строится]->(z:Застройщик)
+RETURN DISTINCT b.name, COLLECT(DISTINCT d.name) AS d, COLLECT(DISTINCT z.name) AS z, {type: nt.name, rooms: l.rooms, count: COUNT(l), price: { min: MIN(l.price), max: MAX(l.price) }, square: { min: MIN(l.square), max: MAX(l.square) } } AS lots
 //MULTIPOLYGON( ( (1 1,5 1,5 5,1 5,1 1) ,(2 2, 3 2, 3 3, 2 3,2 2) ), ( (3 3,6 2,6 4,3 3) ) )
 
  [
