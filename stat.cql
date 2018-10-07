@@ -19,3 +19,58 @@ WITH {rooms: room, is_studio: CASE WHEN room = 'st' THEN true ELSE false END, is
 count: analytics['count_' + room], price: { min: analytics['price_min_' + room], max: analytics['price_max_' + room] }, price_square: { min: analytics['price_square_min_' + room], max: analytics['price_square_max_' + room] }, square: { min: analytics['square_min_' + room], max: analytics['square_max_' + room] } } AS stat WHERE analytics['count_' + room] IS NOT NULL
 WITH collect(stat) AS statistics
 RETURN *
+//
+CALL spatial.addPointLayer('geom');
+CALL spatial.layers();
+
+MATCH (n:`Адрес`) WHERE EXISTS(n.latitude) AND EXISTS(n.longitude)
+WITH n
+CALL spatial.addNode('geom',n) YIELD node
+RETURN node;
+
+CALL spatial.bbox('geom',{lon: 37.06399542968747, lat: 56.06757655398861}, {lon: 38.173614570312466, lat: 55.432467441048146});
+
+POLYGON((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861))
+
+CALL spatial.intersects('geom', 'MULTIPOLYGON(((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)), ((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)))') 
+YIELD node AS address
+MATCH (address)--(b :Корпус) RETURN b
+
+//EXPLAIN
+CALL spatial.intersects('geom', 'MULTIPOLYGON(((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)), ((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)))') YIELD node AS address
+MATCH (address)<-[:расположен]-(b :Корпус)
+WITH DISTINCT b AS bc
+//UNWIND bc AS b
+MATCH (bc)<-[:`в составе`]-(l :Лот) 
+WHERE (bc)<-[:`в составе`]-(l) AND l.price > 5000000 AND l.price < 10000000
+RETURN bc
+
+//EXPLAIN
+CALL spatial.intersects('geom', 'MULTIPOLYGON(((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)), ((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)))') YIELD node AS address
+MATCH (address)<-[:расположен]-(b :Корпус)<-[:`в составе`]-(l :Лот)-[:тип]->(nt:`Тип недвижимости`)
+WHERE l.price > 5000000 AND l.price < 10000000 AND nt.name = 'Апартаменты'
+//WITH DISTINCT b, nt, l
+MATCH (d:Девелопер)<-[:проектируется]-(b)-[:строится]->(z:Застройщик)
+RETURN DISTINCT b.name, COLLECT(DISTINCT d.name) AS d, COLLECT(DISTINCT z.name) AS z, {type: nt.name, rooms: l.rooms, count: COUNT(l), price: { min: MIN(l.price), max: MAX(l.price) }, square: { min: MIN(l.square), max: MAX(l.square) } } AS lots
+//MULTIPOLYGON( ( (1 1,5 1,5 5,1 5,1 1) ,(2 2, 3 2, 3 3, 2 3,2 2) ), ( (3 3,6 2,6 4,3 3) ) )
+
+ [
+        56.06757655398861,
+        37.06399542968747
+      ],
+      [
+        56.06757655398861,
+        38.173614570312466
+      ],
+      [
+        55.432467441048146,
+        38.173614570312466
+      ],
+      [
+        55.432467441048146,
+        37.06399542968747
+      ],
+      [
+        56.06757655398861,
+        37.06399542968747
+      ]
