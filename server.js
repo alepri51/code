@@ -11,6 +11,7 @@ const driver = neo4j.driver('bolt://localhost:7687', neo4j.auth.basic('neo4j', '
 
 const session = driver.session();
 
+
 let schema = [
     'CREATE INDEX ON :Адрес(name)',
     'CREATE INDEX ON :Девелопер(name)',
@@ -18,13 +19,28 @@ let schema = [
     'CREATE INDEX ON :Класс(name)',
     'CREATE INDEX ON :Конструктив(name)',
     'CREATE INDEX ON :Корпус(id)',
+    'CREATE INDEX ON :Лот(id)',
+    'CREATE INDEX ON :Лот(price)',
     'CREATE INDEX ON :Отделка(name)',
     'CREATE INDEX ON :Проект(name)',
     'CREATE INDEX ON :Стадия(name)',
     'CREATE INDEX ON :`Тип парковки`(name)',
     'CREATE INDEX ON :`Тип недвижимости`(name)',
     'CREATE INDEX ON :`Тип фото`(name)',
-    'CREATE INDEX ON :Фото(name)'
+    'CREATE INDEX ON :Фото(url)',
+    //'CALL spatial.removeLayer("geom")',
+    'CALL spatial.addPointLayer("geom")'
+]
+
+let after = [
+    `CALL spatial.intersects('geom', 'MULTIPOLYGON(((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)), ((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)))') YIELD node AS address
+    MATCH (address)<-[:расположен]-(b :Корпус)<-[:\`в составе\`]-(l :Лот)-[:тип]->(nt:\`Тип недвижимости\`)
+    WHERE l.price > 5000000 AND l.price < 10000000 AND nt.name = 'Апартаменты'
+    WITH b, {type: nt.name, rooms: l.rooms, count: COUNT(l), price: { min: MIN(l.price), max: MAX(l.price) }, square: { min: MIN(l.square), max: MAX(l.square) } } AS lots
+    WITH DISTINCT b, lots
+    //UNWIND db AS b
+    MATCH (d:Девелопер)<-[:проектируется]-(b)-[:строится]->(z:Застройщик)
+    RETURN b, d, z, COLLECT(lots)`
 ]
 
 const promise = session.run(
@@ -36,7 +52,14 @@ const promise = session.run(
 promise.then(async result => {
     session.close();
 
-    for(let i = 0; i < schema.length - 1; i++) {
+    for(let i = 0; i < after.length; i++) {
+        console.time('find');
+        let res = await session.run(after[i]);
+        console.timeEnd('find');
+        console.log(res);
+    }
+
+    for(let i = 0; i < schema.length; i++) {
         await session.run(schema[i]);
     }
 
@@ -58,13 +81,13 @@ promise.then(async result => {
         await Promise.all(queries);
         queries = [];
 
-        let part = ids.splice(0, 100);
+        let part = ids.splice(0, 10);
         let i = part.length - 1;
 
 
         while(i > -1) {
 
-            let id = parseInt(part[i]);
+            let id = part[i];
             i--;
 
             let url = `https://api.best-novostroy.ru/api/v1/dombook/building-by-id/${id}?include=lots`;
@@ -155,14 +178,63 @@ promise.then(async result => {
                 const promise3 = session.run(
                     `WITH {building} as building
                     
-                    MATCH (b :Корпус {id: building.id})
+                    UNWIND CASE WHEN SIZE(building.lots) > 0 THEN [] ELSE [0] END AS m
+                        WITH building, building.analytics AS analytics, ['st', 'sp', '1', '2', '3', '4'] AS rooms
 
-                    UNWIND building.lots AS lot
+                        UNWIND rooms AS room
+                            WITH {
+                                name: toString(building.id) + '_' + room,
+                                building_id: building.id,
+                                rooms: room, 
+                                is_studio: CASE WHEN room = 'st' THEN true ELSE false END, 
+                                is_open_plan: CASE WHEN room = 'sp' THEN true ELSE false END,
+                                count: analytics['count_' + room], 
+                                price_min: analytics['price_min_' + room], 
+                                price_max: analytics['price_max_' + room], 
+                                price_square_min: analytics['price_square_min_' + room], 
+                                price_square_max: analytics['price_square_max_' + room], 
+                                square_min: analytics['square_min_' + room], 
+                                square_max: analytics['square_max_' + room],
+                                finishing: building.finishings[0]
+                            } AS stat
+                            WHERE analytics['count_' + room] IS NOT NULL
+
+                            WITH stat, {building} as building
+                            MATCH (b :Корпус {id: building.id})
+                            MERGE (s :Статистика {name: stat.name}) 
+                                SET s += stat {.*, finishing: null}
+
+                            MERGE (s)<-[:имеет]-(b)
+                            WITH s AS stat
+
+                            UNWIND ['_min', '_max'] AS minmax
+                                WITH collect(DISTINCT {
+                                    is_fake: true,
+                                    rooms: stat.rooms, 
+                                    is_studio: stat.is_studio, 
+                                    is_open_plan: stat.is_open_plan, 
+                                    price: stat['price' + minmax], 
+                                    price_square: stat['price_square' + minmax], 
+                                    square: stat['square' + minmax],
+                                    lot_finishing_type: stat.finishing,
+                                    id: stat.name + minmax,
+                                    stat_name: stat.name
+                                }) AS lots
+                    
+
+                    UNWIND CASE WHEN SIZE(lots) = 0 THEN {building}.lots ELSE lots END AS lot
+                        WITH lot, {building} AS building
+                        MATCH (b :Корпус {id: building.id})
 
                         MERGE (l :Лот {id: lot.id})
                             SET l += lot {.identifier, .rooms, .created_at, .section, .price_square, .is_open_plan, .finishing, .number, .square, 
-                                .is_studio, .updated_at, .price, .floor, .ceiling_height}
+                                .is_studio, .updated_at, .price, .price_square, .floor, .ceiling_height, building_id: b.id}
                             
+                        MERGE (l)-[:\`в составе\`]-(b)
+
+                        FOREACH(label IN CASE WHEN lot.is_fake = true THEN [0] ELSE [] END |
+                            SET l:Фэйк
+                        )
                         FOREACH(label IN CASE WHEN lot.is_studio = true THEN [0] ELSE [] END |
                             SET l:Студия
                         )
@@ -183,20 +255,35 @@ promise.then(async result => {
                                 SET ph += photo
                             MERGE (l)-[:имеет]-(ph)
                         
-                            MERGE (l)-[:\`в составе\`]-(b)
                     
                     `,
                     { building }
                 ).catch(err => {
                     console.log(err);
                     ids.push(building.id);
-                });; 
+                });
+
+                /* const promise4 = session.run(
+                    `
+                    
+                    MATCH (n:Адрес) WHERE EXISTS(n.latitude) AND EXISTS(n.longitude)
+                    WITH n
+                    CALL spatial.addNode('geom',n) YIELD node
+                    RETURN node;
+                    
+                    `,
+                    { building }
+                ).catch(err => {
+                    console.log(err);
+                    ids.push(building.id);
+                }); */
 
 
                 queries.push(promise);
                 queries.push(promise1);
                 queries.push(promise2);
                 queries.push(promise3);
+                //queries.push(promise4);
 
                 
             })
