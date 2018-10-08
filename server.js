@@ -33,6 +33,10 @@ let schema = [
 ]
 
 let after = [
+    `MATCH (n:\`Адрес\`) WHERE EXISTS(n.latitude) AND EXISTS(n.longitude)
+        WITH n
+        CALL spatial.addNode('geom',n) YIELD node
+    RETURN node;`,
     `CALL spatial.intersects('geom', 'MULTIPOLYGON(((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)), ((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)))') YIELD node AS address
     MATCH (address)<-[:расположен]-(b :Корпус)<-[:\`в составе\`]-(l :Лот)-[:тип]->(nt:\`Тип недвижимости\`)
     WHERE l.price > 5000000 AND l.price < 10000000 AND nt.name = 'Апартаменты'
@@ -51,13 +55,6 @@ const promise = session.run(
 
 promise.then(async result => {
     session.close();
-
-    for(let i = 0; i < after.length; i++) {
-        console.time('find');
-        let res = await session.run(after[i]);
-        console.timeEnd('find');
-        console.log(res);
-    }
 
     for(let i = 0; i < schema.length; i++) {
         await session.run(schema[i]);
@@ -299,6 +296,14 @@ promise.then(async result => {
     // on application exit:
     //driver.close();
     console.log('err');
+
+    for(let i = 0; i < after.length; i++) {
+        console.time('find');
+        let res = await session.run(after[i]);
+        console.timeEnd('find');
+        console.log(res);
+    }
+
     console.timeEnd('time');
 });
 

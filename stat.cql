@@ -144,9 +144,10 @@ CALL spatial.intersects('geom', 'POLYGON((37.43770224731442 55.676943531025884, 
 
       CALL spatial.intersects('geom', 'MULTIPOLYGON(((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)), ((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)))') YIELD node AS address
 MATCH (address)<-[:расположен]-(b :Корпус)
-WITH DISTINCT b AS b SKIP 50 LIMIT 20
+WHERE b.parking_available = false
+WITH DISTINCT b AS b SKIP 50 LIMIT 10
 MATCH (b)<-[:`в составе`]-(l :Лот)-[:тип]->(nt:`Тип недвижимости`)
-WHERE l.price > 5000000 AND l.price < 10000000 //AND nt.name = 'Апартаменты'
+//WHERE l.price > 5000000 AND l.price < 10000000 //AND nt.name = 'Апартаменты'
 WITH b, {type: nt.name, rooms: l.rooms, count: COUNT(l), price: { min: MIN(l.price), max: MAX(l.price) }, square: { min: MIN(l.square), max: MAX(l.square) } } AS lots
 MATCH (d:Девелопер)<-[:проектируется]-(b)-[:строится]->(z:Застройщик)
-RETURN b, d, z, COLLECT(lots)
+RETURN b, d, CASE WHEN z.name = 'Не указано' THEN d ELSE z END, COLLECT(lots)
