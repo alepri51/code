@@ -176,15 +176,7 @@ let after = [
     `MATCH (n:\`Адрес\`) WHERE EXISTS(n.latitude) AND EXISTS(n.longitude)
         WITH n
         CALL spatial.addNode('geom',n) YIELD node
-    RETURN node;`,
-    `CALL spatial.intersects('geom', 'MULTIPOLYGON(((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)), ((37.06399542968747 56.06757655398861, 38.173614570312466 56.06757655398861, 38.173614570312466 55.432467441048146, 37.06399542968747 55.432467441048146, 37.06399542968747 56.06757655398861)))') YIELD node AS address
-    MATCH (address)<-[:расположен]-(b :Корпус)<-[:\`в составе\`]-(l :Лот)-[:тип]->(nt:\`Тип недвижимости\`)
-    WHERE l.price > 5000000 AND l.price < 10000000 AND nt.name = 'Апартаменты'
-    WITH b, {type: nt.name, rooms: l.rooms, count: COUNT(l), price: { min: MIN(l.price), max: MAX(l.price) }, square: { min: MIN(l.square), max: MAX(l.square) } } AS lots
-    WITH DISTINCT b, lots
-    //UNWIND db AS b
-    MATCH (d:Девелопер)<-[:проектируется]-(b)-[:строится]->(z:Застройщик)
-    RETURN b, d, z, COLLECT(lots)`
+    RETURN node;`
 ]
 
 const promise = session.run(
@@ -218,7 +210,7 @@ promise.then(async result => {
         await Promise.all(queries);
         queries = [];
 
-        let part = ids.splice(0, 10);
+        let part = ids.splice(0, 20);
         let i = part.length - 1;
 
 
@@ -256,8 +248,8 @@ promise.then(async result => {
                     
                     MERGE (b)-[:\`в стадии\`]-(cs)
                     MERGE (b)-[:имеет]-(pt)
-                    MERGE (b)-[:строится]-(bd)
-                    MERGE (b)-[:проектируется]-(dv)
+                    MERGE (b)-[:строит]-(bd)
+                    MERGE (b)-[:проектирует]-(dv)
                     MERGE (b)-[:расположен]-(addr)
                     MERGE (b)-[:имеет]-(constr)
                     MERGE (b)-[:соответствует]-(class)

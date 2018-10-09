@@ -1,3 +1,5 @@
+docker run --publish 7474:7474 --publish 7687:7687 --volume /c/nodejs/dombook.neo/data:/data -
+-volume /c/nodejs/dombook.neo/plugins:/plugins --volume /c/nodejs/dombook.neo/conf:/conf neo4j:latest
 //STATISTICS
 //EXPLAIN
 //MATCH (n) DETACH DELETE n
@@ -323,3 +325,27 @@ MATCH (d:Девелопер)<-[:проектирует]-(b)-[:строит]->(z:
 WITH b {.*, lots: {type: nt.name, rooms: l.rooms, count: COUNT(l), price: { min: MIN(l.price), max: MAX(l.price) }, square: { min: MIN(l.square), max: MAX(l.square)} } } SKIP 40 LIMIT 20
 //WITH size(cnt) AS count, b, d, CASE WHEN z.name = 'Не указано' THEN d ELSE z END AS z, COLLECT(lots) AS lots SKIP 40 LIMIT 20
 RETURN *
+
+WITH [] AS area, [
+'POLYGON((37.68935782592771 55.82908115271371,37.838359901123034 55.82908115271371,37.838359901123034 55.74977093199822,37.68935782592771 55.74977093199822,37.68935782592771 55.82908115271371))'
+] AS poly
+UNWIND poly AS p
+CALL custom.polygon5(p) YIELD buildings
+WITH area + COLLECT(DISTINCT ID(buildings)) AS area
+CALL custom.polygon5('POLYGON((37.68935782592771 55.82908115271371,37.838359901123034 55.82908115271371,37.838359901123034 55.74977093199822,37.68935782592771 55.74977093199822,37.68935782592771 55.82908115271371))') YIELD buildings
+WITH area, COLLECT(DISTINCT ID(buildings)) AS viewport
+WITH [x IN viewport WHERE x IN area | x] AS intersect
+MATCH (b :Корпус) 
+WHERE ID(b) IN intersect //AND b.parking_available = false
+WITH b, size(intersect) AS cnt 
+MATCH (d:Девелопер)<-[:проектирует]-(b :Корпус)-[:строит]->(z:Застройщик)
+WITH DISTINCT b
+MATCH (b)<-[:`в составе`]-(l :Лот)-[:тип]->(nt:`Тип недвижимости`)
+WHERE l.price > 5000000 AND l.price < 10000000 //AND nt.name = 'Апартаменты'
+WITH DISTINCT b, COLLECT(l {.*, nt: nt.name}) AS lots
+UNWIND lots AS l
+WITH b {.*, lots: COLLECT({type: l.nt, rooms: l.rooms, count: COUNT(l), price: { min: MIN(l.price), max: MAX(l.price) }, square: { min: MIN(l.square), max: MAX(l.square)} }) }
+
+//WITH cnt, b {.*, lots: {type: nt.name, rooms: l.rooms, count: COUNT(l), price: { min: MIN(l.price), max: MAX(l.price) }, square: { min: MIN(l.square), max: MAX(l.square)} } } //SKIP 80 LIMIT 20
+//WITH size(cnt) AS count, b, d, CASE WHEN z.name = 'Не указано' THEN d ELSE z END AS z, COLLECT(lots) AS lots SKIP 40 LIMIT 20
+RETURN b //SKIP 0 LIMIT 20
