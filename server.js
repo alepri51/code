@@ -153,14 +153,50 @@ const session = driver.session();
 
 
 let schema = [
+    //PROFILE
+    `WITH [] AS area, [
+        'POLYGON((37.036529609374995 56.03991134977714,38.220306464843716 56.03991134977714,38.220306464843716 55.404346266130695,37.036529609374995 55.404346266130695,37.036529609374995 56.03991134977714))',
+        'POLYGON((37.036529609374995 56.03991134977714,38.220306464843716 56.03991134977714,38.220306464843716 55.404346266130695,37.036529609374995 55.404346266130695,37.036529609374995 56.03991134977714))'
+        ] AS poly
+        UNWIND poly AS p
+        CALL custom.polygon5(p) YIELD buildings
+        WITH area + COLLECT(DISTINCT buildings) AS area
+        
+        CALL custom.polygon5('POLYGON((37.036529609374995 56.03991134977714,38.220306464843716 56.03991134977714,38.220306464843716 55.404346266130695,37.036529609374995 55.404346266130695,37.036529609374995 56.03991134977714))') YIELD buildings
+        WITH area, COLLECT(DISTINCT buildings) AS viewport
+        
+        WITH apoc.coll.intersection(viewport, area) AS intersect
+        
+        CALL apoc.nodes.get(intersect) YIELD node AS building
+        WITH intersect, building LIMIT 2000 WHERE building.operation_year < 2023
+        
+        MATCH (building)<--(l :Лот)-[:тип]->(nt:\`Тип недвижимости\`) 
+        WHERE 
+        l.price > 5000000 AND l.price < 10000000 
+        AND l.square > 10 AND l.square < 100
+        WITH DISTINCT building LIMIT 20
+        
+        MATCH (building)<--(l :Лот)-[:тип]->(nt:\`Тип недвижимости\`) 
+        WHERE 
+        l.price > 5000000 AND l.price < 10000000 
+        AND l.square > 10 AND l.square < 100
+        
+        WITH building {.*, lots: {type: nt.name, rooms: l.rooms, count: COUNT(l), price: { min: MIN(l.price), max: MAX(l.price) }, square: { min: MIN(l.square), max: MAX(l.square)} } } //SKIP 80 LIMIT 20
+        
+        //WITH SIZE(intersect) AS area
+        
+        RETURN *`,
     'CREATE INDEX ON :Адрес(name)',
     'CREATE INDEX ON :Девелопер(name)',
     'CREATE INDEX ON :Застройщик(name)',
     'CREATE INDEX ON :Класс(name)',
     'CREATE INDEX ON :Конструктив(name)',
     'CREATE INDEX ON :Корпус(id)',
+    'CREATE INDEX ON :Корпус(operation_year)',
+    'CREATE INDEX ON :Корпус(operation_quarter)',
     'CREATE INDEX ON :Лот(id)',
     'CREATE INDEX ON :Лот(price)',
+    'CREATE INDEX ON :Лот(square)',
     'CREATE INDEX ON :Отделка(name)',
     'CREATE INDEX ON :Проект(name)',
     'CREATE INDEX ON :Стадия(name)',
@@ -168,7 +204,7 @@ let schema = [
     'CREATE INDEX ON :`Тип недвижимости`(name)',
     'CREATE INDEX ON :`Тип фото`(name)',
     'CREATE INDEX ON :Фото(url)',
-    //'CALL spatial.removeLayer("geom")',
+    'CALL spatial.removeLayer("geom")',
     'CALL spatial.addPointLayer("geom")'
 ]
 
@@ -189,7 +225,13 @@ promise.then(async result => {
     session.close();
 
     for(let i = 0; i < schema.length; i++) {
-        await session.run(schema[i]);
+        try {
+            console.time('try');
+            await session.run(schema[i]);
+            console.timeEnd('try');
+            console.log(schema[i]);
+        }
+        catch(err) {}
     }
 
     const singleRecord = result.records[0];
@@ -210,7 +252,7 @@ promise.then(async result => {
         await Promise.all(queries);
         queries = [];
 
-        let part = ids.splice(0, 20);
+        let part = ids.splice(0, 10);
         let i = part.length - 1;
 
 
@@ -230,12 +272,16 @@ promise.then(async result => {
             })
             .then(result => {
                 let building = result.data;
+                //building.id = building.id + '';
 
                 const session = driver.session();
                 const promise = session.run(
                     `WITH {building} as building
                     
-                    MERGE (b :Корпус {id: building.id}) SET b += building {.commercial_square, .total_square, .pantry_count, .created_at, .floors_num, .parking_spaces_count, .discounts, .updated_at, .parking_available, .floors_from, .pantry_available, .construction_start, .floors_to, .in_operation_date, .sales_start, .name, .living_square, .ceiling_height, .building_type}
+                    MERGE (b :Корпус {id: building.id}) SET b += building {.commercial_square, .total_square, .pantry_count, .created_at, .floors_num, 
+                        .parking_spaces_count, .discounts, .updated_at, .parking_available, .floors_from, .pantry_available, .construction_start, 
+                        .floors_to, .in_operation_date, .sales_start, .name, .living_square, .ceiling_height, .building_type, 
+                        operation_year: date(building.in_operation_date).year, operation_quarter: date(building.in_operation_date).quarter}
                     
                     MERGE (cs :Стадия {name: COALESCE(building.construction_stage.name, 'Не указано')}) SET cs += COALESCE(building.construction_stage, {})
                     MERGE (pt :\`Тип парковки\` {name: COALESCE(building.parking_type.name, 'Не указано')}) SET pt += COALESCE(building.parking_type, {})
