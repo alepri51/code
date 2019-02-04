@@ -1,3 +1,13 @@
+MATCH (n) WHERE NOT 'Metrics' IN LABELS(n) RETURN n {.*, sys_id: ID(n), labels: LABELS(n)}
+
+MATCH (a) WHERE NOT 'Metrics' IN LABELS(a)
+MATCH (b) WHERE NOT 'Metrics' IN LABELS(b)
+MATCH (a)-[r]->(b) 
+RETURN a {sys_id: ID(a)},
+r {.*, sys_id: ID(r), type: TYPE(r)},
+b {sys_id: ID(b)}
+//LIMIT 25
+
 docker run --publish 7474:7474 --publish 7687:7687 --volume /c/nodejs/dombook.neo/data:/data -
 -volume /c/nodejs/dombook.neo/plugins:/plugins --volume /c/nodejs/dombook.neo/conf:/conf neo4j:latest
 //STATISTICS
